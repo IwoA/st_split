@@ -9,25 +9,6 @@
 library(sf)
 library(dplyr)
 
-poznan_pbf_filnename = "~/data/osm/"
-list.files(poznan_pbf_filnename)
-file.remove(file.path(poznan_pbf_filnename, "bbbike_Poznan.gpkg"))
-# osmextract::oe_vectortranslate(poznan_pbf_filnename)
-roads_all = osmextract::oe_get("Poznan", extra_tags = "maxspeed", force_vectortranslate = TRUE)
-
-set.seed(1234)
-
-roads = roads_all |>
-  sample_n(100)
-
-time_st_segmentize = system.time({
-  roads_segmented <- st_as_sf(roads, wkt = "geometry", crs = "EPSG:4326") |>
-  sf::st_segmentize(dfMaxLength = 5)
-})
-
-
-
-
 mkgrid <- function(x, lines_number = 100) {
   # function creates grid based on the bbox of the sf object with defined number of lines
   # inspired by https://grass.osgeo.org/grass82/manuals//v.mkgrid.html
@@ -58,10 +39,28 @@ mkgrid <- function(x, lines_number = 100) {
   list(grid = grid, grid_h = grid_h, grid_v = grid_v)
 }
 
+poznan_pbf_filnename = "~/data/osm/"
+list.files(poznan_pbf_filnename)
+file.remove(file.path(poznan_pbf_filnename, "bbbike_Poznan.gpkg"))
+# osmextract::oe_vectortranslate(poznan_pbf_filnename)
+roads_all = osmextract::oe_get("Poznan", extra_tags = "maxspeed", force_vectortranslate = TRUE)
+
+set.seed(1234)
+
+roads = roads_all |>
+  sample_n(100)
+
+time_st_segmentize = system.time({
+  roads_segmented <- st_as_sf(roads, wkt = "geometry", crs = "EPSG:4326") |>
+  sf::st_segmentize(dfMaxLength = 5)
+})
+
 #### Verification
-plot(roads_all$geometry[1:5000], col = "red")
-plot(grid_v$geom, col = "lightgreen", add = T)
-plot(grid_h$geom, col = "lightgreen", add = T)
+# plot(roads_all$geometry[1:5000], col = "red")
+# plot(grid_v$geom, col = "lightgreen", add = T)
+# plot(grid_h$geom, col = "lightgreen", add = T)
 
 grid <- mkgrid(roads_all)
 time_st_split <- system.time({roads_splitted <- lwgeom::st_split(roads, grid$grid)})
+
+rbind(time_st_segmentize, time_st_split)
