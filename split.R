@@ -6,29 +6,30 @@
 #
 # The challange is how to optimize it or make more 'smarter'
 
-
-
 library(sf)
 library(dplyr)
 
-pbox <- osmdata::getbb('Poland') |> as.data.frame() #bbox of Poland
+poznan_pbf_filnename = "~/data/osm/"
+list.files(poznan_pbf_filnename)
+file.remove(file.path(poznan_pbf_filnename, "bbbike_Poznan.gpkg"))
+# osmextract::oe_vectortranslate(poznan_pbf_filnename)
+roads_all = osmextract::oe_get("Poznan", extra_tags = "maxspeed", force_vectortranslate = TRUE)
 
 set.seed(1234)
 
-linestring <- function(){ # function to create random linestring within the bbox
-  x <- sample(seq(pbox$min[1], pbox$max[1], .1), 2)
-  y <- sample(seq(pbox$min[2], pbox$max[2], .1), 2)
-  l <- as.matrix(cbind(x,y))
-  st_linestring(l)
-}
+roads = roads_all |>
+  sample_n(100)
 
-n <- 10000 # number of 'roads'
-roads <- data.frame(road_id = 1:n, geometry = rep(NA, n))
-for (i in 1:n) { # loop creating roads
-  roads$geometry[i] <- st_as_text(linestring())
-}
-roads <- st_as_sf(roads, wkt = "geometry", crs = "EPSG:4326") |>
-  sf::st_segmentize(dfMaxLength = 10000) # roads consists of many segments of length 10 km
+time_st_segmentize = system.time({
+  roads_segmented <- st_as_sf(roads, wkt = "geometry", crs = "EPSG:4326") |>
+  sf::st_segmentize(dfMaxLength = 5) |>  # roads consists of many segments of length 50 m max
+  sf::st_cast("LINESTRING") |>  # cast to LINESTRING
+  sf::st_collection_extract("LINESTRING") |>  # extract LINESTRING from MULTILINESTRING
+})
+waldo::compare(roads, roads_segmented)
+nrow(roads) / time_st_segmentize[3]
+nrow(roads_segmented) / nrow(roads)
+
 
 #### Grid
 lines_number <- 2000
