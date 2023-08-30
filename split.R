@@ -52,7 +52,7 @@ roads = roads_all |>
 
 time_st_segmentize = system.time({
   roads_segmented <- st_as_sf(roads, wkt = "geometry", crs = "EPSG:4326") |>
-  sf::st_segmentize(dfMaxLength = 5)
+  sf::st_segmentize(dfMaxLength = 2)
 })
 
 #### Verification
@@ -64,3 +64,15 @@ grid <- mkgrid(roads_all)
 time_st_split <- system.time({roads_splitted <- lwgeom::st_split(roads, grid$grid)})
 
 rbind(time_st_segmentize, time_st_split)
+
+##### Comparing results
+comp_results <- function(x, y){
+  x <- st_as_text(x$geometry) |> stringr::str_length()
+  y <- st_as_text(y$geometry) |> stringr::str_length()
+  z <- ifelse(x - y!=0 ,1,0)
+  sum(z)
+}
+
+# Number of transformed roads should be the same
+comp_results(roads, roads_segmented)
+comp_results(roads, roads_splitted)
