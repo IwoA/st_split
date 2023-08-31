@@ -48,7 +48,7 @@ roads_all = osmextract::oe_get("Poznan", extra_tags = "maxspeed", force_vectortr
 set.seed(1234)
 
 roads = roads_all |>
-  sample_n(100)
+  sample_n(1000)
 
 ##### 1. segmentize
 time_st_segmentize = system.time({
@@ -56,10 +56,6 @@ time_st_segmentize = system.time({
   sf::st_segmentize(dfMaxLength = 10)
 })
 
-#### Verification
-# plot(roads_all$geometry[1:5000], col = "red")
-# plot(grid_v$geom, col = "lightgreen", add = T)
-# plot(grid_h$geom, col = "lightgreen", add = T)
 
 grid <- mkgrid(roads_all)
 
@@ -90,7 +86,18 @@ split_lines <- function(roads, blades_h, blades_v) {
 
 time_split_lines <- system.time({roads_split_lines <- split_lines(roads, grid$grid_h, grid$grid_v)})
 
-rbind(time_st_segmentize, time_st_split, time_split_lines)
+##### 4. split_lines2
+split_lines2 <- function(x, h, v) {
+  blades <- rbind(h, v)
+  crosses <- st_filter(x, blades, .predicate = st_crosses)
+  others <- filter(roads, !osm_id %in% (crosses$osm_id))
+  splitted <- lwgeom::st_split(crosses, blades)
+  rbind(splitted, others) |> sf::st_collection_extract("LINESTRING")
+}
+
+time_split_lines2 <- system.time({roads_split_lines2 <- split_lines2(roads, grid$grid_h, grid$grid_v)})
+
+rbind(time_st_segmentize, time_st_split, time_split_lines, time_split_lines2)
 
 ##### Visual verification
 
