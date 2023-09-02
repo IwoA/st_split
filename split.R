@@ -10,7 +10,7 @@ library(sf)
 library(dplyr)
 
 raster_to_grid <- function(raster){
-  grd <- stars::st_as_stars(raster) |> st_as_sf() |> st_cast("POINT") |> tibble::rownames_to_column() |>
+  stars::st_as_stars(raster) |> st_as_sf() |> st_cast("POINT") |> tibble::rownames_to_column() |>
     filter(!rowname %in% as.character(1:(nrows*ncols))) |>  # removes duplicated top-left point
     distinct(geometry) |> # removes duplicated points
     tibble::rowid_to_column() |>
