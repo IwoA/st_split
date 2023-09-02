@@ -9,46 +9,51 @@
 library(sf)
 library(dplyr)
 
-mkgrid <- function(x, lines_number = 100) {
-  # function creates grid based on the bbox of the sf object with defined number of lines
-  # inspired by https://grass.osgeo.org/grass82/manuals//v.mkgrid.html
-  lines_number <- 100
-  pbox <- sf::st_bbox(x)
-  pbox <- data.frame(xmin = pbox[1], ymin = pbox[2], xmax = pbox[3], ymax = pbox[4])
-
-  x = seq.int(from = pbox$xmin, to = pbox$xmax, length.out = lines_number)
-
-  # vertical lines
-  grid_v <- as.data.frame(x) |>
-    mutate(y = x, from = pbox$ymin, to = pbox$ymax) |>
-    as.matrix()
-  geom <- apply(grid_v, 1, function(x)  st_as_text(st_linestring(matrix(x, ncol = 2))), simplify = T)
-  grid_v <- cbind(as.data.frame(grid_v), geom) |>  st_as_sf(wkt = "geom", crs = "EPSG:4326")
-
-  # horizontal lines
-  y = seq.int(from = pbox$ymin, to = pbox$ymax, length.out = lines_number)
-  grid_h <- as.data.frame(y) |>
-    mutate(x = y, from = pbox$xmin, to = pbox$xmax) |> select(from, to, x, y) |>
-    as.matrix()
-  geom <- apply(grid_h, 1, function(x)  st_as_text(st_linestring(matrix(x, ncol = 2))), simplify = T)
-  grid_h <- cbind(as.data.frame(grid_h), geom) |>  st_as_sf(wkt = "geom", crs = "EPSG:4326")
-
-  # grid as one object
-  grid <- st_union(rbind(grid_h, grid_v))
-
-  list(grid = grid, grid_h = grid_h, grid_v = grid_v)
+raster_to_grid <- function(raster){
+  grd <- stars::st_as_stars(raster) |> st_as_sf() |> st_cast("POINT") |> tibble::rownames_to_column() |>
+    filter(!rowname %in% as.character(1:(nrows*ncols))) |>  # removes duplicated top-left point
+    distinct(geometry) |> # removes duplicated points
+    tibble::rowid_to_column() |>
+    group_by(rowid) |> # allows to rowwise execution of st_coordinates
+    mutate(x = st_coordinates(geometry)[1],
+           y = st_coordinates(geometry)[2]) |>
+    ungroup() |>
+    mutate(
+      position = case_when(
+        y == min(y) ~ "top",
+        y == max(y) ~ "bottom",
+        x == min(x) ~ "left",
+        x == max(x) ~ "right")
+    ) |>
+    filter(!is.na(position)) |> # preserves only points on edges
+    group_by(position) |> mutate(id = 1:n()) |> # numbers points in groups for joins
+    group_by(id) |>
+    mutate(position = case_when( # points must be grouped according to line types not egdes
+      position %in% c("top", "bottom") ~ "v",
+      position %in% c("left", "right") ~ "h"
+    )
+    ) |>
+    group_by(id, position) |>
+    summarise(id = mean(id)) |> # points to multipoint
+    st_cast("LINESTRING") # multipoint to linestring
 }
 
-poznan_pbf_filnename = "~/data/osm/"
-list.files(poznan_pbf_filnename)
-file.remove(file.path(poznan_pbf_filnename, "bbbike_Poznan.gpkg"))
-# osmextract::oe_vectortranslate(poznan_pbf_filnename)
 roads_all = osmextract::oe_get("Poznan", extra_tags = "maxspeed", force_vectortranslate = TRUE)
 
 set.seed(1234)
 
 roads = roads_all |>
-  sample_n(1000)
+  sample_n(100)
+
+##### Make grid
+
+# Make raster
+nrows = 10
+ncols = 15
+raster <- terra::rast(nrows = nrows, ncols = ncols, extent = sf::st_bbox(roads_all), vals = 1)
+
+# Grid from raster
+raster_to_grid(raster)
 
 ##### 1. segmentize
 time_st_segmentize = system.time({
