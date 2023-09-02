@@ -43,17 +43,17 @@ roads_all = osmextract::oe_get("Poznan", extra_tags = "maxspeed", force_vectortr
 set.seed(1234)
 
 roads = roads_all |>
-  sample_n(100)
+  sample_n(500)
 
 ##### Make grid
 
 # Make raster
-nrows = 10
-ncols = 15
-raster <- terra::rast(nrows = nrows, ncols = ncols, extent = sf::st_bbox(roads_all), vals = 1)
+nrows = 20
+ncols = 20
+raster <- terra::rast(nrows = nrows, ncols = ncols, terra::ext(roads), vals = 1)
 
 # Grid from raster
-raster_to_grid(raster)
+grid <- raster_to_grid(raster)
 
 ##### 1. segmentize
 time_st_segmentize = system.time({
@@ -62,45 +62,34 @@ time_st_segmentize = system.time({
 })
 
 
-grid <- mkgrid(roads_all)
-
-grd <- stars::st_as_stars(sf::st_bbox(roads_all), nx = 100, ny = 100, values = 1) |>
-  st_as_sf(as_points = FALSE) |> st_cast("MULTILINESTRING")
-
 ##### 2. st_split
-time_st_split <- system.time({roads_splitted <- lwgeom::st_split(tibble::rowid_to_column(roads), grid$grid)|>
+time_st_split <- system.time({roads_splitted <- lwgeom::st_split(tibble::rowid_to_column(roads), grid)|>
   sf::st_collection_extract("LINESTRING") |>
   group_by(rowid) |> summarise(sum = mean(rowid)) |> st_cast("LINESTRING")})
 
 
 ##### 3. split_lines
-split_lines <- function(roads, blades_h, blades_v) {
-  blades_h <- collapse::rsplit(blades_h, 1:nrow(blades_h)) # data.frame to list
-  blades_v <- collapse::rsplit(blades_v, 1:nrow(blades_v)) # data.frame to list
-  tmp <- purrr::map(blades_h,\(x) lwgeom::st_split(tibble::rowid_to_column(roads), x)) |> # split roads line by line
+split_lines <- function(roads, blades) {
+  blades <- collapse::rsplit(blades, 1:nrow(blades)) # data.frame to list
+  tmp <- purrr::map(blades,\(x) lwgeom::st_split(tibble::rowid_to_column(roads), x)) |> # split roads line by line
     purrr::list_rbind() |> # resulting list to data.frame
     sf::st_as_sf() |> # data.frame to sf object
     sf::st_collection_extract("LINESTRING") |>
     group_by(rowid) |> summarise(sum = mean(rowid)) |> st_cast("MULTILINESTRING") # splitted road segments back to one road
-
-  # the same but with vertical lines
-  purrr::map(blades_v,\(x) lwgeom::st_split(tmp, x)) |>
-    purrr::list_rbind() |> sf::st_as_sf() |> sf::st_collection_extract("LINESTRING") |>
-    group_by(rowid) |> summarise(sum = mean(rowid)) |> st_cast("MULTILINESTRING") # st_cast("LINESTRING") 'disappears' parts of multilines
 }
 
-time_split_lines <- system.time({roads_split_lines <- split_lines(roads, grid$grid_h, grid$grid_v)})
+time_split_lines <- system.time({roads_split_lines <- split_lines(roads, grid)})
 
 ##### 4. split_lines2
-split_lines2 <- function(x, h, v) {
-  blades <- rbind(h, v)
+split_lines2 <- function(x, blades) {
+  x <- tibble::rowid_to_column(x)
   crosses <- st_filter(x, blades, .predicate = st_crosses)
-  others <- filter(roads, !osm_id %in% (crosses$osm_id))
+  others <- collapse::fsubset(x, !rowid %in% (crosses$rowid))
   splitted <- lwgeom::st_split(crosses, blades)
   rbind(splitted, others) |> sf::st_collection_extract("LINESTRING")
 }
 
-time_split_lines2 <- system.time({roads_split_lines2 <- split_lines2(roads, grid$grid_h, grid$grid_v)})
+time_split_lines2 <- system.time({roads_split_lines2 <- split_lines2(roads, grid)})
 
 rbind(time_st_segmentize, time_st_split, time_split_lines, time_split_lines2)
 
@@ -109,9 +98,8 @@ rbind(time_st_segmentize, time_st_split, time_split_lines, time_split_lines2)
 library(tmap)
 tmap_mode("view")
 
-tm_shape(st_cast(roads_splitted$geometry[10], 'POINT')) + tm_dots(col = "red", scale = 4) +
-  tm_shape(st_cast(roads_split_lines$geometry[10], 'POINT')) + tm_dots(col = "blue", scale = 2) +
-  tm_shape(st_cast(roads$geometry[10], 'POINT')) + tm_dots(col = "green") +
-  tm_shape(grid$grid_v) + tm_lines(lty = "dotted") +
-  tm_shape(grid$grid_h) + tm_lines(lty = "dotted") +
-  tm_shape(grid$grid) + tm_lines()
+tm_shape(st_cast(roads_splitted$geometry, 'POINT')) + tm_dots(col = "red", scale = 4) +
+  tm_shape(st_cast(roads_split_lines2$geometry, 'POINT')) + tm_dots(col = "blue", scale = 2) +
+  tm_shape(st_cast(roads$geometry, 'POINT')) + tm_dots(col = "green") +
+  tm_shape(roads$geometry) + tm_lines(col = "green") +
+  tm_shape(grid) + tm_lines(lty = "dotted")
