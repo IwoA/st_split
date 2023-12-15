@@ -3,10 +3,29 @@ title: "geopandas overlay vs R st_intersection"
 output: html_notebook
 ---
 
+```{r}
+library(sf)
+library(dplyr)
+```
+
+
+## Roads
+```{r}
+roads_all = osmextract::oe_get("Poznan", extra_tags = "maxspeed", force_vectortranslate = TRUE)
+roads = roads_all |>
+  filter(highway %in% c("motorway", "primary", "secondary", "tertiary")) |>
+  tibble::rowid_to_column()
+```
+
+## Grid
+```{r}
+grid <- st_make_grid(roads, n = c(10, 10)) |> st_as_sf() |> rename(geometry= x) |> mutate(x = 1)
+```
+
+
 # Approaches
 
 ## 1. Simple crop roads to the grid with `sf::st_intersection()` function
-
 
 ```{r}
 ##### 1. intersection
