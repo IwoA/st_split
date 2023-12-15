@@ -1,0 +1,50 @@
+---
+title: "geopandas overlay vs R st_intersection"
+output: html_notebook
+---
+
+# Approaches
+
+## 1. Simple crop roads to the grid with `sf::st_intersection()` function
+
+
+```{r}
+##### 1. intersection
+time_st_intersection = system.time({
+  roads_segmented <- st_intersection(roads, grid)
+})
+time_st_intersection
+```
+
+## 2. Simple crop roads to the grid with `lwgeom::st_split()` function
+```{r}
+##### 2. st_split
+time_st_split <- system.time({roads_split <- lwgeom::st_split(roads, grid)|>
+  sf::st_collection_extract("LINESTRING")})
+
+time_st_split
+```
+
+
+## 3. Crop roads with Python
+```{python}
+import geopandas as gpd
+from shapely.geometry import Polygon, LineString
+import time
+
+roads = r.roads
+grid = r.grid
+
+grid['geometry'] = grid['geometry'].apply(lambda x: Polygon(x[0]))
+grid = gpd.GeoDataFrame(grid, geometry='geometry')
+
+roads['geometry'] = roads['geometry'].apply(LineString)
+roads = gpd.GeoDataFrame(roads, geometry='geometry')
+
+start_time = time.time()
+roads_python = gpd.overlay(roads, grid, how='intersection')
+print(f"{round(time.time() - start_time,3)} seconds")
+```
+
+
+
